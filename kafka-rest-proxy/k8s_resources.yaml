@@ -1,0 +1,90 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: kafka-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: kafka-proxy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  minReadySeconds: 10
+  template:
+    metadata:
+      labels:
+        name: kafka-proxy
+    spec:
+      containers:
+        - name: kafka-proxy
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 1
+              memory: 2Gi
+          env:
+            - name: KAFKA_REST_BOOTSTRAP_SERVERS
+              value: kafka_broker_urls
+            - name: KAFKA_REST_HOST_NAME
+              value: external_url_used_by_consumers
+            - name: KAFKA_REST_LISTENERS
+              value: http://0.0.0.0:8080
+          image: confluentinc/cp-kafka-rest:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: kafka-proxy
+          livenessProbe:
+            httpGet:
+              path: "/"
+              port: 8080
+            initialDelaySeconds: 30
+            timeoutSeconds: 2
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: "/"
+              port: 8080
+            initialDelaySeconds: 10
+            timeoutSeconds: 2
+            periodSeconds: 10
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: kafka-proxy
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+  rules:
+    - host: url_here
+      http:
+        paths:
+          - backend:
+              serviceName: kafka-proxy
+              servicePort: 8080
+    - host: localhost
+      http:
+        paths:
+            - backend:
+                serviceName: kafka-proxy
+                servicePort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-proxy
+  labels:
+    service: kafka-proxy
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    name: kafka-proxy
+  type: ClusterIP
